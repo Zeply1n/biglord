@@ -671,6 +671,36 @@ describe("pre-enrollment websocket handling", () => {
 });
 
 describe("client-bound pending responses", () => {
+  test("auto scripts wait for the authenticated client's ready ping and dispatch once", async () => {
+    const clientId = uniqueId("auto-script-ready");
+    const ws = createClientSocket(clientId, "authenticated");
+    const info = {
+      id: clientId,
+      role: "client" as const,
+      ws,
+      lastSeen: Date.now(),
+      online: true,
+    };
+    clientManager.addClient(clientId, info);
+
+    let dispatches = 0;
+    const deps = createLifecycleDeps({
+      dispatchAutoScriptsForConnection(dispatchedInfo: typeof info, dispatchedWs: typeof ws) {
+        expect(dispatchedInfo).toBe(info);
+        expect(dispatchedWs).toBe(ws);
+        if (!dispatchedWs.data.autoTasksRan) {
+          dispatchedWs.data.autoTasksRan = true;
+          dispatches += 1;
+        }
+      },
+    });
+
+    expect(dispatches).toBe(0);
+    await handleWebSocketMessage(ws, encodeMessage({ type: "ping", ts: Date.now() }), deps);
+    await handleWebSocketMessage(ws, encodeMessage({ type: "ping", ts: Date.now() }), deps);
+    expect(dispatches).toBe(1);
+  });
+
   test("a superseded authenticated socket cannot inject messages", async () => {
     const clientId = uniqueId("superseded-socket");
     const staleWs = createClientSocket(clientId, "authenticated");
