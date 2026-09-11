@@ -19,6 +19,7 @@ import type { PluginRuntime } from "../plugin-runtime/runtime";
 import { arePluginNeedsApproved, computePluginNeedsHash, getPluginPull, deletePluginPull, detectPluginIdFromZip } from "../plugin-state-bundle";
 import { isAuthorizedAgentRequest } from "../agent-auth";
 import { logger } from "../../logger";
+import { fetchPublicHttpResponse } from "../url-security";
 
 type PluginManifest = ProtocolPluginManifest & {
   signature?: PluginSignatureInfo;
@@ -414,7 +415,14 @@ export async function handlePluginRoutes(
     }
 
     try {
-      const upstream = await fetch(target, { method, headers, body, redirect: "follow" });
+      // Pin the request to a validated public address. Plain fetch() here
+      // allowed plugins to reach loopback, RFC1918, link-local/cloud metadata,
+      // and DNS-rebinding targets through the server's network privileges.
+      const upstream = await fetchPublicHttpResponse(
+        target.toString(),
+        { method, headers, body, redirect: "manual" },
+        { maxResponseBytes: 8 * 1024 * 1024, timeoutMs: 30_000 },
+      );
       return makePluginProxyResponse(upstream);
     } catch (err) {
       return Response.json(

@@ -51,12 +51,12 @@ describe("MessagePack allocation preflight", () => {
     expect(() => preflightMessagePack(encode(value))).not.toThrow();
   });
 
-  test("does not impose the former low container-item limit", () => {
-    const aboveFormerLimit = 16_385;
-    for (const prefix of [0xdd, 0xdf] as const) {
-      expect(() => preflightMessagePack(container32(prefix, aboveFormerLimit)))
-        .toThrow("truncated value header");
-    }
+  test("rejects containers that declare unreasonable allocation counts", () => {
+    const tooMany = DEFAULT_UNTRUSTED_MESSAGEPACK_LIMITS.maxContainerItems + 1;
+    expect(() => preflightMessagePack(container32(0xdd, tooMany)))
+      .toThrow("per-container item limit exceeded");
+    expect(() => preflightMessagePack(container32(0xdf, tooMany)))
+      .toThrow("per-container item limit exceeded");
   });
 
   test("rejects depth amplification while allowing the configured boundary", () => {
@@ -78,6 +78,13 @@ describe("MessagePack allocation preflight", () => {
     expect(() => preflightMessagePack(payload)).not.toThrow();
   });
 
+  test("caps aggregate values across many individually small containers", () => {
+    const payload = encode([[1, 2], [3, 4]]);
+    expect(() => preflightMessagePack(payload, { maxTotalValues: 7 })).not.toThrow();
+    expect(() => preflightMessagePack(payload, { maxTotalValues: 6 }))
+      .toThrow("total value limit exceeded");
+  });
+
   test("rejects truncated strings and containers", () => {
     expect(() => preflightMessagePack(new Uint8Array([0xdb, 0, 0, 0, 4, 0x61])))
       .toThrow("truncated str32 body");
@@ -95,6 +102,6 @@ describe("MessagePack allocation preflight", () => {
   test("decodeMessage applies the preflight before the library decoder", () => {
     const declaredBillions = container32(0xdd, 0xffff_ffff);
     expect(() => decodeMessage(declaredBillions))
-      .toThrow("truncated value header");
+      .toThrow("per-container item limit exceeded");
   });
 });

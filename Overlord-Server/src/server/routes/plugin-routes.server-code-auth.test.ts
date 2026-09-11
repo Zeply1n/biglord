@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import AdmZip from "adm-zip";
 import { generateToken } from "../../auth";
-import { createUser, deleteUser, getUserById } from "../../users";
+import { createUser, deleteUser, getUserById, setUserPluginAccessScope } from "../../users";
 import { handlePluginRoutes } from "./plugin-routes";
 
 const PASSWORD = "Aa1!ServerPluginPermissionTest123";
@@ -17,6 +17,7 @@ beforeAll(async () => {
   );
   if (!created.success || !created.userId) throw new Error(created.error || "failed to create operator");
   operatorId = created.userId;
+  if (!setUserPluginAccessScope(operatorId, "all").success) throw new Error("failed to grant plugin scope");
   operatorToken = await generateToken(getUserById(operatorId)!);
 });
 
@@ -81,5 +82,17 @@ describe("server plugin code authorization", () => {
     expect(response?.status).toBe(403);
     expect(await response?.text()).toContain("plugins:configure");
     expect(started).toBe(false);
+  });
+
+  test("plugin proxy cannot reach server-local or metadata addresses", async () => {
+    for (const target of ["http://127.0.0.1:3000/admin", "http://169.254.169.254/latest/meta-data/"]) {
+      const url = new URL(`https://localhost/api/plugins/client-plugin/proxy?url=${encodeURIComponent(target)}`);
+      const response = await handlePluginRoutes(new Request(url, {
+        headers: { Authorization: `Bearer ${operatorToken}` },
+      }), url, deps());
+
+      expect(response?.status).toBe(502);
+      expect((await response?.json() as any).error).toContain("private/internal");
+    }
   });
 });

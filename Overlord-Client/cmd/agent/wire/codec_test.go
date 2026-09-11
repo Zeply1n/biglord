@@ -104,3 +104,10 @@ func TestDecodeEnvelope_EmptyBytes(t *testing.T) {
 		t.Fatal("expected error for empty input")
 	}
 }
+
+func TestDecodeEnvelope_RejectsOversizedInput(t *testing.T) {
+	_, err := DecodeEnvelope(make([]byte, MaxEnvelopeBytes+1))
+	if err == nil {
+		t.Fatal("expected error for oversized input")
+	}
+}

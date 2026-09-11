@@ -1,12 +1,14 @@
 export type MessagePackPreflightLimits = {
   maxDepth: number;
   maxContainerItems: number;
+  maxTotalValues: number;
 };
 
 export const DEFAULT_UNTRUSTED_MESSAGEPACK_LIMITS: Readonly<MessagePackPreflightLimits> =
   Object.freeze({
     maxDepth: 32,
-    maxContainerItems: 0xffff_ffff,
+    maxContainerItems: 1_000_000,
+    maxTotalValues: 2_000_000,
   });
 
 export class MessagePackPreflightError extends Error {
@@ -40,8 +42,13 @@ export function preflightMessagePack(
     limits.maxContainerItems,
     DEFAULT_UNTRUSTED_MESSAGEPACK_LIMITS.maxContainerItems,
   );
+  const maxTotalValues = positiveIntegerLimit(
+    limits.maxTotalValues,
+    DEFAULT_UNTRUSTED_MESSAGEPACK_LIMITS.maxTotalValues,
+  );
   let offset = 0;
   let pendingValues = 1;
+  let totalValues = 0;
   const stack: Array<{ remaining: number; depth: number }> = [
     { remaining: 1, depth: 1 },
   ];
@@ -87,6 +94,8 @@ export function preflightMessagePack(
     }
     frame.remaining -= 1;
     pendingValues -= 1;
+    totalValues += 1;
+    if (totalValues > maxTotalValues) fail("total value limit exceeded");
     if (frame.depth > maxDepth) fail("nesting depth limit exceeded");
 
     const prefix = readUint8("value header");
