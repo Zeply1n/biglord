@@ -523,6 +523,22 @@ export async function handlePluginRoutes(
       return new Response("Invalid plugin zip", { status: 400 });
     }
 
+    // server.js is imported by a Bun worker and therefore has the same host
+    // filesystem/process privileges as the server. Keep client-plugin
+    // administration available to operators, but treat introducing server
+    // code as direct execution and require the narrower admin permission.
+    const containsServerCode = probe.getEntries().some((entry: any) =>
+      !entry?.isDirectory && path.basename(String(entry?.entryName || "")).toLowerCase() === "server.js"
+    );
+    if (containsServerCode) {
+      try {
+        requirePermission(user, "plugins:configure");
+      } catch (error) {
+        if (error instanceof Response) return error;
+        return new Response("Forbidden", { status: 403 });
+      }
+    }
+
     const internalId = detectPluginIdFromZip(probe);
     const idCandidate = internalId || path.basename(filename, path.extname(filename));
     let pluginId = "";
@@ -598,6 +614,17 @@ export async function handlePluginRoutes(
       body = await req.json();
     } catch {}
     const enabled = !!body.enabled;
+
+    // Starting server.js is arbitrary host-code execution, not ordinary
+    // client plugin lifecycle management.
+    if (enabled && deps.pluginRuntime.hasServerCode(pluginId)) {
+      try {
+        requirePermission(user, "plugins:configure");
+      } catch (error) {
+        if (error instanceof Response) return error;
+        return new Response("Forbidden", { status: 403 });
+      }
+    }
 
     if (enabled) {
       const sigInfo = await getOrVerifySignature(deps.PLUGIN_ROOT, pluginId);
